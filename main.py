@@ -14,6 +14,7 @@ class Pos:
 class DuckHorDirection(enum.Enum):
     LEFT = 0
     RIGHT = 1
+    NONE = 2
 
 class DuckVerDirection(enum.Enum):
     UP = 0
@@ -21,6 +22,7 @@ class DuckVerDirection(enum.Enum):
 
 class Duck:
     def __init__(self):
+        self.is_alive = True
         self.pos = Pos(0, 0)
         self.width = 120
         self.height = 90
@@ -35,6 +37,7 @@ class DuckGame:
         self.screen_width = display_info.current_w
         self.screen_height = display_info.current_h
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.kills = 0
         self.duck_count = 5
         self.ducks = [Duck() for _ in range(self.duck_count)]
         self.duck_images = []
@@ -46,6 +49,7 @@ class DuckGame:
     def fetch_duck_images(self):
         self.duck_images.append(pygame.image.load("duckImages/duck_left_wings_down.png").convert_alpha())
         self.duck_images.append(pygame.image.load("duckImages/duck_right_wings_down.png").convert_alpha())
+        self.duck_images.append(pygame.image.load("duckImages/duck_dead.png").convert_alpha())
     
     def init_duck_position(self, duck):
         random_x = random.randint(0, (self.screen_width - duck.width))
@@ -80,17 +84,33 @@ class DuckGame:
 
     def game_loop(self, clock):
         while True:
-            self.check_quit_event()
+            self.check_events()
             self.move_ducks()
             self.handle_wall_collisions()
             self.draw_everything()
             clock.tick(60)
 
-    def check_quit_event(self):
+    def check_events(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                pos = event.pos
+                button = event.button
+                if (button == 1): self.shoot_gun(pos)
+
+    def shoot_gun(self, shot_pos):
+        shot_x, shot_y = shot_pos
+        for duck in self.ducks:
+            if ((duck.pos.x <= shot_x <= (duck.pos.x + duck.width)) and (duck.pos.y <= shot_y <= (duck.pos.y + duck.height))):
+                if (duck.is_alive): self.kill_duck(duck)
+
+    def kill_duck(self, duck):
+        duck.is_alive = False
+        duck.ver_direction = DuckVerDirection.DOWN
+        duck.hor_direction = DuckHorDirection.NONE
+        self.kills += 1
 
     def move_ducks(self):
         for duck in self.ducks:
@@ -100,18 +120,36 @@ class DuckGame:
             if (duck.ver_direction == DuckVerDirection.UP): duck.pos.y = duck.pos.y - duck.speed
             elif (duck.ver_direction == DuckVerDirection.DOWN): duck.pos.y = duck.pos.y + duck.speed
 
+
     def handle_wall_collisions(self):
         for duck in self.ducks:
-            if (duck.pos.x < 0): duck.hor_direction = DuckHorDirection.RIGHT
-            elif ((duck.pos.x + duck.width) >= self.screen_width): duck.hor_direction = DuckHorDirection.LEFT
+            if (duck.is_alive):
+                if (duck.pos.x < 0): duck.hor_direction = DuckHorDirection.RIGHT
+                elif ((duck.pos.x + duck.width) >= self.screen_width): duck.hor_direction = DuckHorDirection.LEFT
 
-            if (duck.pos.y < 0): duck.ver_direction = DuckVerDirection.DOWN
-            elif ((duck.pos.y + duck.height) >= self.screen_height): duck.ver_direction = DuckVerDirection.UP 
-
+                if (duck.pos.y < 0): duck.ver_direction = DuckVerDirection.DOWN
+                elif ((duck.pos.y + duck.height) >= self.screen_height): duck.ver_direction = DuckVerDirection.UP
+            else:
+                if (duck.pos.y > self.screen_height): 
+                    self.respawn_duck(duck)
+                
+    def respawn_duck(self, duck):
+        self.init_duck_position(duck)
+        duck.is_alive = True
+        if (self.kills % 2 == 0): 
+            duck.hor_direction = DuckHorDirection.LEFT
+            duck.ver_direction = DuckVerDirection.UP
+        else:
+            duck.hor_direction = DuckHorDirection.RIGHT
+            duck.ver_direction = DuckVerDirection.DOWN
+    
     def draw_everything(self):
         self.screen.fill((150, 150, 255))   # Background
         for duck in self.ducks:
-            self.screen.blit(self.duck_images[duck.hor_direction.value], (duck.pos.x, duck.pos.y)) 
+            if (duck.is_alive):
+                self.screen.blit(self.duck_images[duck.hor_direction.value], (duck.pos.x, duck.pos.y))
+            else:
+                self.screen.blit(self.duck_images[2], (duck.pos.x, duck.pos.y))
         pygame.display.flip()
 
 if __name__ == "__main__":
