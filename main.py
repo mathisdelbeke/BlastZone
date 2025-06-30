@@ -52,24 +52,28 @@ class DuckGame:
         self.duck_images.append(pygame.image.load("duckImages/duck_dead.png").convert_alpha())
     
     def init_duck_position(self, duck):
-        random_x = random.randint(0, (self.screen_width - duck.width))
-        random_y = random.randint(0, self.screen_height - duck.height)
-        is_unique = False
-        while (not is_unique):
+        while True:
+            random_x = random.randint(0, self.screen_width - duck.width)
+            random_y = random.randint(0, self.screen_height - duck.height)
+            duck_rect = (random_x, random_y, random_x + duck.width, random_y + duck.height)
+
+            overlap = False
             for other_duck in self.ducks:
-                if (duck == other_duck): continue
+                if duck is other_duck:
+                    continue
 
-                if ((not (random_x + duck.width) < other_duck.pos.x) and (not random_x > (other_duck.pos.x + other_duck.width))):
-                    random_x = random.randint(0, (self.screen_width - duck.width))
-                    is_unique = False
-                    break
-                elif ((not (random_y + duck.height) < duck.pos.y) and (not random_y > (duck.pos.y + duck.height))):    
-                    random_y = random.randint(0, self.screen_height - duck.height)
-                    is_unique = False
-                    break
-                else:
-                    is_unique = True
+                other_rect = (other_duck.pos.x, other_duck.pos.y,
+                            other_duck.pos.x + other_duck.width,
+                            other_duck.pos.y + other_duck.height)
 
+                if not (duck_rect[2] <= other_rect[0] or duck_rect[0] >= other_rect[2] or
+                        duck_rect[3] <= other_rect[1] or duck_rect[1] >= other_rect[3]):
+                    overlap = True
+                    break
+
+            if not overlap:
+                break
+                
         duck.pos.x = random_x
         duck.pos.y = random_y
 
