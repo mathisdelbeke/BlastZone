@@ -33,6 +33,7 @@ class Duck:
 class DuckGame:
     def __init__(self):
         pygame.init()
+        pygame.display.set_caption("BlastZone")
         display_info = pygame.display.Info()
         self.screen_width = display_info.current_w
         self.screen_height = display_info.current_h
@@ -54,7 +55,7 @@ class DuckGame:
     def init_duck_position(self, duck):
         duck.pos.x = random.randint(0, self.screen_width - duck.width)
         duck.pos.y = random.randint(0, self.screen_height - duck.height)
-            
+
     def init_ducks_directions(self):
         for i in range(len(self.ducks)):
             if i % 2 == 0: 
@@ -127,6 +128,9 @@ class DuckGame:
     
     def draw_everything(self):
         self.screen.fill((150, 150, 255))   # Background
+        font = pygame.font.SysFont(None, 48)
+        text_surface = font.render(f"Kills: {self.kills}", True, (255, 255, 255))
+        self.screen.blit(text_surface, (0, 0))
         for duck in self.ducks:
             if (duck.is_alive):
                 self.screen.blit(self.duck_images[duck.hor_direction.value], (duck.pos.x, duck.pos.y))
