@@ -192,3 +192,65 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+
+
+# ESP-IDF build output
+/build/
+/*.elf
+/*.bin
+/*.map
+/*.log
+/*.tmp
+*.o
+*.d
+
+# Flash and partition images
+*.bin
+*.img
+
+# CMake and Ninja build files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_deps
+.ninja_log
+
+# ESP-IDF specific files
+sdkconfig
+sdkconfig.old
+project_description.json
+
+# VSCode files
+.vscode/
+
+# Eclipse project files
+.settings/
+.cproject
+.project
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+*.swn
+
+# Python environment and cache
+.env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDF Python-related files
+idf.py
+.env/
+.repros/
+
+# MacOS/Linux temporary files
+.DS_Store
+Thumbs.db
