@@ -52,31 +52,9 @@ class DuckGame:
         self.duck_images.append(pygame.image.load("duckImages/duck_dead.png").convert_alpha())
     
     def init_duck_position(self, duck):
-        while True:
-            random_x = random.randint(0, self.screen_width - duck.width)
-            random_y = random.randint(0, self.screen_height - duck.height)
-            duck_rect = (random_x, random_y, random_x + duck.width, random_y + duck.height)
-
-            overlap = False
-            for other_duck in self.ducks:
-                if duck is other_duck:
-                    continue
-
-                other_rect = (other_duck.pos.x, other_duck.pos.y,
-                            other_duck.pos.x + other_duck.width,
-                            other_duck.pos.y + other_duck.height)
-
-                if not (duck_rect[2] <= other_rect[0] or duck_rect[0] >= other_rect[2] or
-                        duck_rect[3] <= other_rect[1] or duck_rect[1] >= other_rect[3]):
-                    overlap = True
-                    break
-
-            if not overlap:
-                break
-                
-        duck.pos.x = random_x
-        duck.pos.y = random_y
-
+        duck.pos.x = random.randint(0, self.screen_width - duck.width)
+        duck.pos.y = random.randint(0, self.screen_height - duck.height)
+            
     def init_ducks_directions(self):
         for i in range(len(self.ducks)):
             if i % 2 == 0: 
@@ -158,4 +136,3 @@ class DuckGame:
 
 if __name__ == "__main__":
     duck_game = DuckGame()
-
