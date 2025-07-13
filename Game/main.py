@@ -5,6 +5,8 @@ import random
 import pygame
 import serial
 import time
+import threading
+import queue
 
 @dataclasses.dataclass
 class Pos:
@@ -32,7 +34,7 @@ class Duck:
 
 class DuckGame:
     com_port = 'COM5'
-    com_baud_rate = 9600
+    com_baud_rate = 9600 
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("BlastZone")
@@ -49,8 +51,9 @@ class DuckGame:
         for duck in self.ducks: self.init_duck_position(duck)
         self.init_ducks_directions()
         self.draw_everything()
+        self.serial = None
         self.is_com_connected = False
-        self.connect_com_port()
+        self.serial_data_queue = queue.Queue()
         self.game_loop(pygame.time.Clock())
 
     def fetch_duck_images(self):
@@ -71,25 +74,39 @@ class DuckGame:
                 self.ducks[i].hor_direction = DuckHorDirection.RIGHT
                 self.ducks[i].ver_direction = DuckVerDirection.DOWN
 
-    def connect_com_port(self):
+    def connect_to_com(self):
         while (not self.is_com_connected):
             try:
-                ser = serial.Serial(self.com_port, self.com_baud_rate, timeout=10)
+                self.serial = serial.Serial(self.com_port, self.com_baud_rate, timeout=1)
                 self.is_com_connected = True
+                self.serial_thread = threading.Thread(target=self.read_com_port, daemon=True)
+                self.serial_thread.start()
                 self.error = ""
-                        
             except serial.SerialException as e:
                 self.error = f"Error {e}"
                 self.draw_everything()
-                time.sleep(3)
+                time.sleep(1)
+    
+    def read_com_port(self):
+        while self.is_com_connected:
+            try:
+                if self.serial.in_waiting:
+                    line = self.serial.readline().decode("utf-8", errors="replace").strip()
+                    self.serial_data_queue.put(line)
+                    print(f"{line}")
+            except serial.SerialException:                                                      # what about prev thread?
+                self.is_com_connected = False
 
     def game_loop(self, clock):
         while True:
-            self.check_events()
-            self.move_ducks()
-            self.handle_wall_collisions()
-            self.draw_everything()
-            clock.tick(60)
+            if (not self.is_com_connected):
+                self.connect_to_com()
+            else:
+                self.check_events()
+                self.move_ducks()
+                self.handle_wall_collisions()
+                self.draw_everything()
+                clock.tick(60)
 
     def check_events(self):
         for event in pygame.event.get():
