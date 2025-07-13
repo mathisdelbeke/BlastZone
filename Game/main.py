@@ -3,6 +3,8 @@ import enum
 import dataclasses
 import random
 import pygame
+import serial
+import time
 
 @dataclasses.dataclass
 class Pos:
@@ -29,10 +31,13 @@ class Duck:
         self.ver_direction = DuckVerDirection.UP
 
 class DuckGame:
+    com_port = 'COM5'
+    com_baud_rate = 9600
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("BlastZone")
         display_info = pygame.display.Info()
+        self.error = ""
         self.screen_width = display_info.current_w
         self.screen_height = display_info.current_h
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
@@ -43,6 +48,9 @@ class DuckGame:
         self.fetch_duck_images()
         for duck in self.ducks: self.init_duck_position(duck)
         self.init_ducks_directions()
+        self.draw_everything()
+        self.is_com_connected = False
+        self.connect_com_port()
         self.game_loop(pygame.time.Clock())
 
     def fetch_duck_images(self):
@@ -62,6 +70,18 @@ class DuckGame:
             else: 
                 self.ducks[i].hor_direction = DuckHorDirection.RIGHT
                 self.ducks[i].ver_direction = DuckVerDirection.DOWN
+
+    def connect_com_port(self):
+        while (not self.is_com_connected):
+            try:
+                ser = serial.Serial(self.com_port, self.com_baud_rate, timeout=10)
+                self.is_com_connected = True
+                self.error = ""
+                        
+            except serial.SerialException as e:
+                self.error = f"Error {e}"
+                self.draw_everything()
+                time.sleep(3)
 
     def game_loop(self, clock):
         while True:
@@ -126,14 +146,21 @@ class DuckGame:
     
     def draw_everything(self):
         self.screen.fill((150, 150, 255))   # Background
-        font = pygame.font.SysFont(None, 48)
-        text_surface = font.render(f"Kills: {self.kills}", True, (255, 255, 255))
-        self.screen.blit(text_surface, (0, 0))
+
         for duck in self.ducks:
             if (duck.is_alive):
                 self.screen.blit(self.duck_images[duck.hor_direction.value], (duck.pos.x, duck.pos.y))
             else:
-                self.screen.blit(self.duck_images[2], (duck.pos.x, duck.pos.y))
+                self.screen.blit(self.duck_images[DuckHorDirection.NONE.value], (duck.pos.x, duck.pos.y))
+
+        kills_font = pygame.font.SysFont(None, 48)
+        kills_text_surface = kills_font.render(f"Kills: {self.kills}", True, (255, 255, 255))
+        self.screen.blit(kills_text_surface, (0, 0))
+
+        error_font = pygame.font.SysFont(None, 24)
+        error_text_surface = error_font.render(f"{self.error}", True, (255, 255, 255))
+        self.screen.blit(error_text_surface, (0, self.screen_height - 50))
+
         pygame.display.flip()
 
 if __name__ == "__main__":
