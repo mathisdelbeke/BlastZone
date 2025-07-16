@@ -5,8 +5,8 @@ import random
 import pygame
 import serial
 import time
-import threading
 import queue
+import struct
 
 @dataclasses.dataclass
 class Pos:
@@ -33,8 +33,12 @@ class Duck:
         self.ver_direction = DuckVerDirection.UP
 
 class DuckGame:
-    com_port = 'COM5'
-    com_baud_rate = 9600 
+    COM_PORT = 'COM5'
+    COM_BAUD_RATE = 9600
+    NUM_MPU6500_BYTES = 6
+    REFRESH_FREQ = 60 #60
+    GYRO_SCALE_FACTOR = 131.0
+
     def __init__(self):
         pygame.init()
         pygame.display.set_caption("BlastZone")
@@ -53,6 +57,7 @@ class DuckGame:
         self.draw_everything()
         self.serial = None
         self.is_com_connected = False
+        self.connect_to_com()
         self.serial_data_queue = queue.Queue()
         self.game_loop(pygame.time.Clock())
 
@@ -77,36 +82,22 @@ class DuckGame:
     def connect_to_com(self):
         while (not self.is_com_connected):
             try:
-                self.serial = serial.Serial(self.com_port, self.com_baud_rate, timeout=1)
+                self.serial = serial.Serial(self.COM_PORT, self.COM_BAUD_RATE, timeout=1)
                 self.is_com_connected = True
-                self.serial_thread = threading.Thread(target=self.read_com_port, daemon=True)
-                self.serial_thread.start()
                 self.error = ""
             except serial.SerialException as e:
                 self.error = f"Error {e}"
                 self.draw_everything()
                 time.sleep(1)
-    
-    def read_com_port(self):
-        while self.is_com_connected:
-            try:
-                if self.serial.in_waiting:
-                    line = self.serial.readline().decode("utf-8", errors="replace").strip()
-                    self.serial_data_queue.put(line)
-                    print(f"{line}")
-            except serial.SerialException:                                                      # what about prev thread?
-                self.is_com_connected = False
 
     def game_loop(self, clock):
         while True:
-            if (not self.is_com_connected):
-                self.connect_to_com()
-            else:
-                self.check_events()
-                self.move_ducks()
-                self.handle_wall_collisions()
-                self.draw_everything()
-                clock.tick(60)
+            self.check_events()
+            self.update_controller_pos()
+            self.move_ducks()
+            self.handle_wall_collisions()
+            self.draw_everything()
+            clock.tick(self.REFRESH_FREQ)
 
     def check_events(self):
         for event in pygame.event.get():
@@ -116,7 +107,25 @@ class DuckGame:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 pos = event.pos
                 button = event.button
-                if (button == 1): self.shoot_gun(pos)
+                if (button == 1): self.shoot_gun(pos)                                   # Needs to go
+
+    def update_controller_pos(self):
+        data = self.read_com_port()
+        if (data is not None):
+            gx, gy, gz = struct.unpack(">hhh", data)
+            gx_dps = gx / self.GYRO_SCALE_FACTOR
+            gy_dps = gy / self.GYRO_SCALE_FACTOR
+            gz_dps = gz / self.GYRO_SCALE_FACTOR
+            print(f"{gx_dps:.0f}, {gy_dps:.0f}, {gz_dps:.0f}")
+
+    def read_com_port(self):
+        try:
+            if self.serial.in_waiting >= self.NUM_MPU6500_BYTES:
+                data = self.serial.read(self.NUM_MPU6500_BYTES)
+                if len(data) == self.NUM_MPU6500_BYTES: return data
+        except serial.SerialException:                                               
+            self.is_com_connected = False
+            self.connect_to_com()
 
     def shoot_gun(self, shot_pos):
         shot_x, shot_y = shot_pos
