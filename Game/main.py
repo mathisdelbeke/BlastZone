@@ -36,8 +36,9 @@ class DuckGame:
     COM_PORT = 'COM5'
     COM_BAUD_RATE = 9600
     NUM_MPU6500_BYTES = 6
-    REFRESH_FREQ = 60 #60
+    REFRESH_FREQ = 60
     GYRO_SCALE_FACTOR = 131.0
+    AIM_SENSITIVITY = 50
 
     def __init__(self):
         pygame.init()
@@ -47,6 +48,7 @@ class DuckGame:
         self.screen_width = display_info.current_w
         self.screen_height = display_info.current_h
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        self.aim_point = Pos((self.screen_width / 2), self.screen_height    / 2)
         self.kills = 0
         self.duck_count = 5
         self.ducks = [Duck() for _ in range(self.duck_count)]
@@ -59,6 +61,7 @@ class DuckGame:
         self.is_com_connected = False
         self.connect_to_com()
         self.serial_data_queue = queue.Queue()
+        # Start game
         self.game_loop(pygame.time.Clock())
 
     def fetch_duck_images(self):
@@ -117,6 +120,12 @@ class DuckGame:
             gy_dps = gy / self.GYRO_SCALE_FACTOR
             gz_dps = gz / self.GYRO_SCALE_FACTOR
             print(f"{gx_dps:.0f}, {gy_dps:.0f}, {gz_dps:.0f}")
+
+            self.aim_point.x -= (gz_dps * self.AIM_SENSITIVITY * (1 / self.REFRESH_FREQ))       # more precise time???
+            self.aim_point.y -= (gx_dps * self.AIM_SENSITIVITY * (1 / self.REFRESH_FREQ)) 
+
+            self.aim_point.x = max(0, min(self.screen_width, self.aim_point.x))
+            self.aim_point.y = max(0, min(self.screen_height, self.aim_point.y))
 
     def read_com_port(self):
         try:
@@ -177,7 +186,9 @@ class DuckGame:
             if (duck.is_alive):
                 self.screen.blit(self.duck_images[duck.hor_direction.value], (duck.pos.x, duck.pos.y))
             else:
-                self.screen.blit(self.duck_images[DuckHorDirection.NONE.value], (duck.pos.x, duck.pos.y))
+                   self.screen.blit(self.duck_images[DuckHorDirection.NONE.value], (duck.pos.x, duck.pos.y))
+
+        pygame.draw.circle(self.screen, (0, 0, 0), (self.aim_point.x, self.aim_point.y), 5, 0)  # width=0 = filled circle
 
         kills_font = pygame.font.SysFont(None, 48)
         kills_text_surface = kills_font.render(f"Kills: {self.kills}", True, (255, 255, 255))
