@@ -36,6 +36,8 @@ class DuckGame:
     COM_BAUD_RATE = 9600
     UART_MSSG_HEADER = 0xAA
     NUM_MPU6500_BYTES = 6
+    GUN_TRIGGER_BYTES = 1
+    TOTAL_DATA_BYTES = NUM_MPU6500_BYTES + GUN_TRIGGER_BYTES
     REFRESH_FREQ = 60
     GYRO_SCALE_FACTOR = 131.0
     HPF_ALPHA = 0.90
@@ -111,70 +113,71 @@ class DuckGame:
 
     def game_loop(self):
         while True:
-            self.check_events()
-            self.update_aim_pos()
+            self.check_exit_event()
+            self.process_user_input()
             self.move_ducks()
             self.handle_wall_collisions()
             self.draw_everything()
             self.clock.tick(self.REFRESH_FREQ)
 
-    def check_events(self):
+    def check_exit_event(self):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                pos = event.pos
-                button = event.button
-                if (button == 1): self.shoot_gun(pos)                                   # Needs to go
 
-    def update_aim_pos(self):
-        data = self.read_com_port()
-        if (data is not None):
-            delta_time = self.clock.get_time() / 1000.0
+    def process_user_input(self):
+        user_data = self.read_com_port()
+        if (user_data is not None):
+            self.update_aim_pos(user_data[:-1])
+            self.process_gun_trigger(user_data[-1])
 
-            # Raw analog to degrees per second
-            gx, gy, gz = struct.unpack(">hhh", data)
-            gx_dps = gx / self.GYRO_SCALE_FACTOR
-            gy_dps = gy / self.GYRO_SCALE_FACTOR
-            gz_dps = gz / self.GYRO_SCALE_FACTOR
-            # HPF
-            self.gx_dps_hpf = self.HPF_ALPHA * (self.gx_dps_hpf + gx_dps - self.prev_gx_dps)       
-            self.gy_dps_hpf = self.HPF_ALPHA * (self.gy_dps_hpf + gy_dps - self.prev_gy_dps)
-            self.gz_dps_hpf = self.HPF_ALPHA * (self.gz_dps_hpf + gz_dps - self.prev_gz_dps)
-            self.prev_gx_dps = gx_dps
-            self.prev_gy_dps = gy_dps
-            self.prev_gz_dps = gz_dps
-            # LPF
-            self.gx_dps_lpf = self.LPF_ALPHA * self.gx_dps_hpf + (1 - self.LPF_ALPHA) * self.gx_dps_lpf
-            self.gy_dps_lpf = self.LPF_ALPHA * self.gy_dps_hpf + (1 - self.LPF_ALPHA) * self.gy_dps_lpf
-            self.gz_dps_lpf = self.LPF_ALPHA * self.gz_dps_hpf + (1 - self.LPF_ALPHA) * self.gz_dps_lpf
-            
-            print(delta_time)
-            print(f"{self.gx_dps_lpf:.0f}, {self.gy_dps_lpf:.0f}, {self.gz_dps_lpf:.0f}")
+    def update_aim_pos(self, data):
+        delta_time = self.clock.get_time() / 1000.0     
+        # Raw analog to degrees per second
+        gx, gy, gz = struct.unpack(">hhh", data)
+        gx_dps = gx / self.GYRO_SCALE_FACTOR
+        gy_dps = gy / self.GYRO_SCALE_FACTOR
+        gz_dps = gz / self.GYRO_SCALE_FACTOR
+        # HPF
+        self.gx_dps_hpf = self.HPF_ALPHA * (self.gx_dps_hpf + gx_dps - self.prev_gx_dps)       
+        self.gy_dps_hpf = self.HPF_ALPHA * (self.gy_dps_hpf + gy_dps - self.prev_gy_dps)
+        self.gz_dps_hpf = self.HPF_ALPHA * (self.gz_dps_hpf + gz_dps - self.prev_gz_dps)
+        self.prev_gx_dps = gx_dps
+        self.prev_gy_dps = gy_dps
+        self.prev_gz_dps = gz_dps
+        # LPF
+        self.gx_dps_lpf = self.LPF_ALPHA * self.gx_dps_hpf + (1 - self.LPF_ALPHA) * self.gx_dps_lpf
+        self.gy_dps_lpf = self.LPF_ALPHA * self.gy_dps_hpf + (1 - self.LPF_ALPHA) * self.gy_dps_lpf
+        self.gz_dps_lpf = self.LPF_ALPHA * self.gz_dps_hpf + (1 - self.LPF_ALPHA) * self.gz_dps_lpf
 
-            self.aim_point.x -= (self.gz_dps_lpf * self.aim_sensitivity * delta_time)       
-            self.aim_point.y -= (self.gx_dps_lpf * self.aim_sensitivity * delta_time) 
-            self.aim_point.x = max(0, min(self.screen_width, self.aim_point.x))
-            self.aim_point.y = max(0, min(self.screen_height, self.aim_point.y))
+        #print(f"{self.gx_dps_lpf:.0f}, {self.gy_dps_lpf:.0f}, {self.gz_dps_lpf:.0f}")
+
+        self.aim_point.x -= (self.gz_dps_lpf * self.aim_sensitivity * delta_time)       
+        self.aim_point.y -= (self.gx_dps_lpf * self.aim_sensitivity * delta_time) 
+        self.aim_point.x = max(0, min(self.screen_width, self.aim_point.x))
+        self.aim_point.y = max(0, min(self.screen_height, self.aim_point.y))
+
+    def process_gun_trigger(self, trigger_status):
+        if (trigger_status == 1): self.shoot_gun()
 
     def read_com_port(self):
         try:
             if (self.serial.in_waiting >= 1):
-                byte = self.serial.read(1)
-                if (byte[0] == self.UART_MSSG_HEADER):
-                    if (self.serial.in_waiting >= self.NUM_MPU6500_BYTES):
-                        data_bytes = self.serial.read(self.NUM_MPU6500_BYTES)
-                        if (len(data_bytes) == self.NUM_MPU6500_BYTES): return data_bytes
+                first_byte = self.serial.read(1)
+                if (first_byte[0] == self.UART_MSSG_HEADER):
+                    if (self.serial.in_waiting >= self.TOTAL_DATA_BYTES):
+                        print(self.serial.in_waiting)
+                        data_bytes = self.serial.read(self.TOTAL_DATA_BYTES)
+                        if (len(data_bytes) == self.TOTAL_DATA_BYTES): return data_bytes
         
         except serial.SerialException:                                               
             self.is_com_connected = False
             self.connect_to_com()
 
-    def shoot_gun(self, shot_pos):
-        shot_x, shot_y = shot_pos
+    def shoot_gun(self):
         for duck in self.ducks:
-            if ((duck.pos.x <= shot_x <= (duck.pos.x + duck.width)) and (duck.pos.y <= shot_y <= (duck.pos.y + duck.height))):
+            if ((duck.pos.x <= self.aim_point.x <= (duck.pos.x + duck.width)) and (duck.pos.y <= self.aim_point.y <= (duck.pos.y + duck.height))):
                 if (duck.is_alive): self.kill_duck(duck)
 
     def kill_duck(self, duck):
