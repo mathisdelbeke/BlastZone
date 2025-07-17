@@ -167,7 +167,6 @@ class DuckGame:
                 first_byte = self.serial.read(1)
                 if (first_byte[0] == self.UART_MSSG_HEADER):
                     if (self.serial.in_waiting >= self.TOTAL_DATA_BYTES):
-                        print(self.serial.in_waiting)
                         data_bytes = self.serial.read(self.TOTAL_DATA_BYTES)
                         if (len(data_bytes) == self.TOTAL_DATA_BYTES): return data_bytes
         
