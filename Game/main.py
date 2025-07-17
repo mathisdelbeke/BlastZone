@@ -38,7 +38,8 @@ class DuckGame:
     NUM_MPU6500_BYTES = 6
     REFRESH_FREQ = 60
     GYRO_SCALE_FACTOR = 131.0
-    HPF_ALPHA = 0.8
+    HPF_ALPHA = 0.90
+    LPF_ALPHA = 0.3
 
     def __init__(self):
         pygame.init()
@@ -52,13 +53,16 @@ class DuckGame:
         self.prev_gx_dps = 0
         self.prev_gy_dps = 0
         self.prev_gz_dps = 0
-        self.gx_dps_fil = 0
-        self.gy_dps_fil = 0
-        self.gz_dps_fil = 0
-        self.aim_point = Pos((self.screen_width / 2), self.screen_height / 2)
+        self.gx_dps_hpf = 0
+        self.gy_dps_hpf = 0
+        self.gz_dps_hpf = 0
+        self.gx_dps_lpf = 0
+        self.gy_dps_lpf = 0
+        self.gz_dps_lpf = 0
 
+        self.aim_point = Pos((self.screen_width / 2), self.screen_height / 2)
+        self.aim_sensitivity = 100
         self.kills = 0
-        self.aim_sensitivity = 50
 
         self.duck_count = 5
         self.ducks = [Duck() for _ in range(self.duck_count)]
@@ -73,7 +77,8 @@ class DuckGame:
         self.connect_to_com()
         
         # Start game
-        self.game_loop(pygame.time.Clock())
+        self.clock = pygame.time.Clock()
+        self.game_loop()
 
     def fetch_duck_images(self):
         self.duck_images.append(pygame.image.load("duckImages/duck_left_wings_down.png").convert_alpha())
@@ -104,14 +109,14 @@ class DuckGame:
                 self.draw_everything()
                 time.sleep(1)
 
-    def game_loop(self, clock):
+    def game_loop(self):
         while True:
             self.check_events()
             self.update_aim_pos()
             self.move_ducks()
             self.handle_wall_collisions()
             self.draw_everything()
-            clock.tick(self.REFRESH_FREQ)
+            self.clock.tick(self.REFRESH_FREQ)
 
     def check_events(self):
         for event in pygame.event.get():
@@ -126,22 +131,30 @@ class DuckGame:
     def update_aim_pos(self):
         data = self.read_com_port()
         if (data is not None):
+            delta_time = self.clock.get_time() / 1000.0
+
+            # Raw analog to degrees per second
             gx, gy, gz = struct.unpack(">hhh", data)
             gx_dps = gx / self.GYRO_SCALE_FACTOR
             gy_dps = gy / self.GYRO_SCALE_FACTOR
             gz_dps = gz / self.GYRO_SCALE_FACTOR
-
-            self.gx_dps_fil = self.HPF_ALPHA * (self.gx_dps_fil + gx_dps - self.prev_gx_dps)       # hpf
-            self.gy_dps_fil = self.HPF_ALPHA * (self.gy_dps_fil + gy_dps - self.prev_gy_dps)
-            self.gz_dps_fil = self.HPF_ALPHA * (self.gz_dps_fil + gz_dps - self.prev_gz_dps)
+            # HPF
+            self.gx_dps_hpf = self.HPF_ALPHA * (self.gx_dps_hpf + gx_dps - self.prev_gx_dps)       
+            self.gy_dps_hpf = self.HPF_ALPHA * (self.gy_dps_hpf + gy_dps - self.prev_gy_dps)
+            self.gz_dps_hpf = self.HPF_ALPHA * (self.gz_dps_hpf + gz_dps - self.prev_gz_dps)
             self.prev_gx_dps = gx_dps
             self.prev_gy_dps = gy_dps
             self.prev_gz_dps = gz_dps
-            print(f"{self.gx_dps_fil:.0f}, {self.gy_dps_fil:.0f}, {self.gz_dps_fil:.0f}")
+            # LPF
+            self.gx_dps_lpf = self.LPF_ALPHA * self.gx_dps_hpf + (1 - self.LPF_ALPHA) * self.gx_dps_lpf
+            self.gy_dps_lpf = self.LPF_ALPHA * self.gy_dps_hpf + (1 - self.LPF_ALPHA) * self.gy_dps_lpf
+            self.gz_dps_lpf = self.LPF_ALPHA * self.gz_dps_hpf + (1 - self.LPF_ALPHA) * self.gz_dps_lpf
+            
+            print(delta_time)
+            print(f"{self.gx_dps_lpf:.0f}, {self.gy_dps_lpf:.0f}, {self.gz_dps_lpf:.0f}")
 
-            self.aim_point.x -= (self.gz_dps_fil * self.aim_sensitivity * (1 / self.REFRESH_FREQ))       # more precise time???
-            self.aim_point.y -= (self.gx_dps_fil * self.aim_sensitivity * (1 / self.REFRESH_FREQ)) 
-
+            self.aim_point.x -= (self.gz_dps_lpf * self.aim_sensitivity * delta_time)       
+            self.aim_point.y -= (self.gx_dps_lpf * self.aim_sensitivity * delta_time) 
             self.aim_point.x = max(0, min(self.screen_width, self.aim_point.x))
             self.aim_point.y = max(0, min(self.screen_height, self.aim_point.y))
 
