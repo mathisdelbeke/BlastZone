@@ -5,7 +5,6 @@ import random
 import pygame
 import serial
 import time
-import queue
 import struct
 
 @dataclasses.dataclass
@@ -35,10 +34,11 @@ class Duck:
 class DuckGame:
     COM_PORT = 'COM5'
     COM_BAUD_RATE = 9600
+    UART_MSSG_HEADER = 0xAA
     NUM_MPU6500_BYTES = 6
     REFRESH_FREQ = 60
     GYRO_SCALE_FACTOR = 131.0
-    AIM_SENSITIVITY = 50
+    HPF_ALPHA = 0.8
 
     def __init__(self):
         pygame.init()
@@ -48,8 +48,18 @@ class DuckGame:
         self.screen_width = display_info.current_w
         self.screen_height = display_info.current_h
         self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
-        self.aim_point = Pos((self.screen_width / 2), self.screen_height    / 2)
+
+        self.prev_gx_dps = 0
+        self.prev_gy_dps = 0
+        self.prev_gz_dps = 0
+        self.gx_dps_fil = 0
+        self.gy_dps_fil = 0
+        self.gz_dps_fil = 0
+        self.aim_point = Pos((self.screen_width / 2), self.screen_height / 2)
+
         self.kills = 0
+        self.aim_sensitivity = 50
+
         self.duck_count = 5
         self.ducks = [Duck() for _ in range(self.duck_count)]
         self.duck_images = []
@@ -57,10 +67,11 @@ class DuckGame:
         for duck in self.ducks: self.init_duck_position(duck)
         self.init_ducks_directions()
         self.draw_everything()
+
         self.serial = None
         self.is_com_connected = False
         self.connect_to_com()
-        self.serial_data_queue = queue.Queue()
+        
         # Start game
         self.game_loop(pygame.time.Clock())
 
@@ -96,7 +107,7 @@ class DuckGame:
     def game_loop(self, clock):
         while True:
             self.check_events()
-            self.update_controller_pos()
+            self.update_aim_pos()
             self.move_ducks()
             self.handle_wall_collisions()
             self.draw_everything()
@@ -112,26 +123,37 @@ class DuckGame:
                 button = event.button
                 if (button == 1): self.shoot_gun(pos)                                   # Needs to go
 
-    def update_controller_pos(self):
+    def update_aim_pos(self):
         data = self.read_com_port()
         if (data is not None):
             gx, gy, gz = struct.unpack(">hhh", data)
             gx_dps = gx / self.GYRO_SCALE_FACTOR
             gy_dps = gy / self.GYRO_SCALE_FACTOR
             gz_dps = gz / self.GYRO_SCALE_FACTOR
-            print(f"{gx_dps:.0f}, {gy_dps:.0f}, {gz_dps:.0f}")
 
-            self.aim_point.x -= (gz_dps * self.AIM_SENSITIVITY * (1 / self.REFRESH_FREQ))       # more precise time???
-            self.aim_point.y -= (gx_dps * self.AIM_SENSITIVITY * (1 / self.REFRESH_FREQ)) 
+            self.gx_dps_fil = self.HPF_ALPHA * (self.gx_dps_fil + gx_dps - self.prev_gx_dps)       # hpf
+            self.gy_dps_fil = self.HPF_ALPHA * (self.gy_dps_fil + gy_dps - self.prev_gy_dps)
+            self.gz_dps_fil = self.HPF_ALPHA * (self.gz_dps_fil + gz_dps - self.prev_gz_dps)
+            self.prev_gx_dps = gx_dps
+            self.prev_gy_dps = gy_dps
+            self.prev_gz_dps = gz_dps
+            print(f"{self.gx_dps_fil:.0f}, {self.gy_dps_fil:.0f}, {self.gz_dps_fil:.0f}")
+
+            self.aim_point.x -= (self.gz_dps_fil * self.aim_sensitivity * (1 / self.REFRESH_FREQ))       # more precise time???
+            self.aim_point.y -= (self.gx_dps_fil * self.aim_sensitivity * (1 / self.REFRESH_FREQ)) 
 
             self.aim_point.x = max(0, min(self.screen_width, self.aim_point.x))
             self.aim_point.y = max(0, min(self.screen_height, self.aim_point.y))
 
     def read_com_port(self):
         try:
-            if self.serial.in_waiting >= self.NUM_MPU6500_BYTES:
-                data = self.serial.read(self.NUM_MPU6500_BYTES)
-                if len(data) == self.NUM_MPU6500_BYTES: return data
+            if (self.serial.in_waiting >= 1):
+                byte = self.serial.read(1)
+                if (byte[0] == self.UART_MSSG_HEADER):
+                    if (self.serial.in_waiting >= self.NUM_MPU6500_BYTES):
+                        data_bytes = self.serial.read(self.NUM_MPU6500_BYTES)
+                        if (len(data_bytes) == self.NUM_MPU6500_BYTES): return data_bytes
+        
         except serial.SerialException:                                               
             self.is_com_connected = False
             self.connect_to_com()
