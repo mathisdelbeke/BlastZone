@@ -14,6 +14,7 @@
 #define UART_NUM UART_NUM_0                                     // UART 0 hard connected to USB-UART bridge
 #define UART_BUF_SIZE 1024
 #define UART_BAUD_RATE 9600
+#define UART_MSSG_HEADER 0xAA
 
 #define I2C_MASTER_NUM      I2C_NUM_0                           
 #define I2C_MASTER_SDA_IO   21                                  
@@ -31,7 +32,6 @@ static void init_i2c_master();
 static void wake_up_mpu6500();
 static void read_mpu6500_data(uint8_t *mpu6500_data);
 static void update_controller_pos(void *pvParameters);
-
 
 static void init_uart() {
     uart_config_t uart_config = {
@@ -72,8 +72,13 @@ static void wake_up_mpu6500() {
 
 static void update_controller_pos(void *pvParameters) {
     for (;;) {
+        uint8_t uart_mssg_header = UART_MSSG_HEADER;
+        uart_write_bytes(UART_NUM, &uart_mssg_header, 1);
         uint8_t mpu6500_data[MPU6500_BYTES_TO_READ];
         read_mpu6500_data(mpu6500_data);
+        for (uint8_t i = 0; i < MPU6500_BYTES_TO_READ; i++) {
+            if (mpu6500_data[i] == UART_MSSG_HEADER) mpu6500_data[i] += 1;
+        }
         uart_write_bytes(UART_NUM, mpu6500_data, MPU6500_BYTES_TO_READ);
         vTaskDelay(pdMS_TO_TICKS(UPDATE_CONTROLLER_DELAY));                        
     }
